@@ -1,0 +1,43 @@
+[build-system]
+requires = [
+  "setuptools>=61.0.0",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytest-custom-timeout"
+description = "Use custom logic when a test times out. Based on pytest-timeout."
+version = "0.1.0"
+readme = "README.rst"
+requires-python = ">=3.8"
+authors = [
+    { name = "Adam Nogowski", email = "anogowski@live.com" },
+]
+maintainers = [
+    { name = "Adam Nogowski", email = "anogowski@live.com" },
+]
+license = {file = "LICENSE"}
+classifiers = [
+    "Framework :: Pytest",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Testing",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+]
+dependencies = [
+    "pytest>=8.0.0",
+]
+[project.urls]
+Repository = "https://github.com/anogowski/pytest-custom-timeout"
+[project.entry-points.pytest11]
+custom-timeout = "pytest_custom_timeout.plugin"
