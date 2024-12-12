@@ -8,21 +8,25 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-env/
 build/
 develop-eggs/
 dist/
 downloads/
 eggs/
 .eggs/
+env/
 lib/
 lib64/
 parts/
 sdist/
 var/
+wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
+version.py
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -71,4 +75,3 @@ target/
 
 # pyenv
 .python-version
-

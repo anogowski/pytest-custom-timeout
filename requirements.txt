@@ -1,0 +1,9 @@
+build==1.2.2.post1
+colorama==0.4.6
+iniconfig==2.0.0
+packaging==24.2
+pexpect==4.9.0
+pluggy==1.5.0
+ptyprocess==0.7.0
+pyproject_hooks==1.2.0
+pytest==8.3.4
