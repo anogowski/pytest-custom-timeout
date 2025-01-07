@@ -1,15 +1,17 @@
-import logging
+import os, dateutil.tz
+from datetime import datetime
+import pytest, pytest_custom_timeout.plugin
+from pytest_html.plugin import Report
 
-import pytest
-import pytest_custom_timeout.plugin
 
-# def pytest_timeout_on_timeout(item, settings):
-# 	CUSTOM_STATUS_BLOCKED = "TIMEOUT"
-# 	setattr(item, "outcome", CUSTOM_STATUS_BLOCKED)
-# 	pytest.fail("Timeout >%ss" % settings.timeout)
+def pytest_timeout_on_timeout():
+	os.system(f'echo "TIMED OUT $(date)" >> output/timeout.log')
+	pytest.fail("TIMED OUT")
 
-# def on_timeout():
-# 	if pytest_custom_timeout.plugin.is_debugging():
-# 		return
-# 	pytest.skip("Skipping the rest of the test due to condition")
-# 	pytest.fail(CUSTOM_STATUS_BLOCKED)
+
+def pytest_html_results_table_header(cells):
+	cells.insert(2, '<th class="sortable time" data-column-type="time">Time</th>')
+
+
+def pytest_html_results_table_row(report: Report, cells):
+	cells.insert(2, f'<td class="col-time">{datetime.now(dateutil.tz.tzlocal())}</td>')

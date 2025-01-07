@@ -24,7 +24,7 @@ classifiers = [
 	"Environment :: Console",
 	"Environment :: Plugins",
 	"Intended Audience :: Developers",
-	"Operating System :: OS Independent",
+	"Operating System :: Linux",
 	"Programming Language :: Python",
 	"Programming Language :: Python :: 3.11",
 	"Programming Language :: Python :: 3.12",
@@ -46,5 +46,7 @@ Repository = "https://github.com/anogowski/pytest-custom-timeout"
 custom-timeout = "pytest_custom_timeout.plugin"
 
 [tool.pytest.ini_options]
-addopts = "--showlocals -s -v -ra --tb=auto"
+addopts = "--showlocals -s -v -ra --tb=auto --self-contained-html --html=output/report.html"
 timeout = 1
+initial_sort = "time"
+generate_report_on_test = "true"

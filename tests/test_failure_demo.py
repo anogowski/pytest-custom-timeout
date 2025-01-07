@@ -25,7 +25,7 @@ def test_timeout_1_for_2_sec():
 	sleep(2)
 
 
-@pytest.mark.timeout(1)
+@pytest.mark.timeout(2)
 def test_timeout_1_for_5_sec():
 	"""Basic timeout demonstration."""
 	time.sleep(5)

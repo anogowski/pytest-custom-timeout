@@ -17,6 +17,8 @@ from collections import namedtuple
 from enum import StrEnum
 import logging
 
+from pluggy import PluginManager
+from pluggy._hooks import HookRelay
 import pytest
 from pytest import CallInfo
 from _pytest.outcomes import Failed
@@ -119,7 +121,7 @@ class TimeoutHooks:
 	"""Timeout specific hooks."""
 
 	@pytest.hookspec(firstresult=True)
-	def pytest_timeout_set_timer(item, settings, phase: str | Phases = Phases.ALL):
+	def pytest_timeout_set_timer(self, item, settings, phase: str | Phases = Phases.ALL):
 		"""Called at timeout setup.
 
 		'item' is a pytest node to setup timeout for.
@@ -128,8 +130,9 @@ class TimeoutHooks:
 
 		"""
 
+	@staticmethod
 	@pytest.hookspec(firstresult=True)
-	def pytest_timeout_on_timeout(item, settings, phase: str | Phases = Phases.ALL):
+	def pytest_timeout_on_timeout():
 		"""Called at timeout.
 
 		'item' is a pytest node which was used for timeout setup.
@@ -139,7 +142,7 @@ class TimeoutHooks:
 		"""
 
 	@pytest.hookspec(firstresult=True)
-	def pytest_timeout_cancel_timer(item, phase: str | Phases = Phases.ALL):
+	def pytest_timeout_cancel_timer(self, item, phase: str | Phases = Phases.ALL):
 		"""Called at timeout teardown.
 
 		'item' is a pytest node which was used for timeout setup.
@@ -149,7 +152,7 @@ class TimeoutHooks:
 		"""
 
 
-def pytest_addhooks(pluginmanager):
+def pytest_addhooks(pluginmanager: pytest.PytestPluginManager):
 	"""Register timeout-specific hooks."""
 	pluginmanager.add_hookspecs(TimeoutHooks)
 
@@ -252,26 +255,7 @@ def pytest_report_header(config):
 		return timeout_header
 
 
-TIMEOUT_STR: str = "TIMEOUT"
-
-
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item, call: CallInfo):
-	"""Called to create a test report for each of the setup, call and teardown runtest phases of a test item."""
-	report = (yield).get_result()
-	if get_attr_on_phase(item, "outcome", "pass") == TIMEOUT_STR:
-		# Error occurred in test case, which was not due to a verification
-		# Could be that the test case code is broken. Add custom property
-		# on the report to store wether the test is `blocked`.
-		if call.when == "call":
-			set_attr_on_phase(report, TIMEOUT_STR, True)
-		report.outcome = "fail"
-
-
-def pytest_report_teststatus(report, config):
-	"""Customizes the reporting of test statuses."""
-	if getattr(report, TIMEOUT_STR, False):
-		return "timeout", "T", (TIMEOUT_STR, {"red": True})
+TIMEOUT_STR: str = "TIMED_OUT"
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -334,22 +318,6 @@ def is_debugging(trace_func=None):
 SUPPRESS_TIMEOUT = False
 
 
-@pytest.hookimpl(hookwrapper=True)
-def pytest_pyfunc_call(pyfuncitem):
-	try:
-		outcome = yield
-		outcome.get_result()  # will raise if outcome was exception
-		print('success')
-	except Failed as fe:
-		if TIMEOUT_STR in fe.msg:
-			logging.error(TIMEOUT_STR + fe.msg)
-			raise fe
-		else:
-			raise fe
-	except Exception:
-		print('Failed')
-
-
 def set_attr_on_phase(item, attr_name: str, value, phase: str | Phases = Phases.ALL):
 	match phase:
 		case Phases.ALL:
@@ -391,7 +359,7 @@ def pytest_timeout_set_timer(item, settings, phase: str | Phases = Phases.ALL):
 
 		def handler(signum, frame):
 			__tracebackhide__ = True
-			pytest_timeout_on_timeout(item, settings, phase)
+			_on_timeout(item, settings, phase)
 
 		def cancel():
 			signal.setitimer(signal.ITIMER_REAL, 0)
@@ -402,7 +370,7 @@ def pytest_timeout_set_timer(item, settings, phase: str | Phases = Phases.ALL):
 		signal.signal(signal.SIGALRM, handler)
 		signal.setitimer(signal.ITIMER_REAL, settings.timeout)
 	elif timeout_method == "thread":
-		timer = threading.Timer(settings.timeout, pytest_timeout_on_timeout, (item, settings))
+		timer = threading.Timer(settings.timeout, _on_timeout, (item, settings))
 		timer.name = "%s %s" % (__name__, item.nodeid)
 
 		def cancel():
@@ -414,18 +382,16 @@ def pytest_timeout_set_timer(item, settings, phase: str | Phases = Phases.ALL):
 	return True
 
 
-@pytest.hookimpl(trylast=True)
-def pytest_timeout_on_timeout(item, settings, phase: str | Phases = Phases.ALL):
+def _on_timeout(item: pytest.Item, settings, phase: str | Phases = Phases.ALL):
 	"""
 	Run on timeout
 	"""
 	if not settings.disable_debugger_detection and is_debugging():
 		return
 	set_attr_on_phase(item, "outcome", TIMEOUT_STR, phase)
-	pytest.fail(f"{TIMEOUT_STR} >{settings.timeout}s")
 
-	# return
-	# pytest.skip(f"Timeout >{settings.timeout}s")
+	item.config.pluginmanager.hook.pytest_timeout_on_timeout()
+	pytest.fail(f"{TIMEOUT_STR} >{settings.timeout}s")
 
 
 @pytest.hookimpl(trylast=True)
@@ -564,79 +530,3 @@ def _validate_disable_debugger_detection(disable_debugger_detection, where):
 	if not isinstance(disable_debugger_detection, bool):
 		raise ValueError("Invalid disable_debugger_detection value %s from %s" % (disable_debugger_detection, where))
 	return disable_debugger_detection
-
-
-def timeout_sigalrm(item, settings):
-	"""Dump stack of threads and raise an exception.
-
-	This will output the stacks of any threads other then the
-	current to stderr and then raise an AssertionError, thus
-	terminating the test.
-	"""
-	if not settings.disable_debugger_detection and is_debugging():
-		return
-	__tracebackhide__ = True
-	nthreads = len(threading.enumerate())
-	terminal = item.config.get_terminal_writer()
-	if nthreads > 1:
-		terminal.sep("+", title="Timeout")
-	dump_stacks(terminal)
-	if nthreads > 1:
-		terminal.sep("+", title="Timeout")
-	pytest.fail("Timeout >%ss" % settings.timeout)
-
-
-def timeout_timer(item, settings):
-	"""Dump stack of threads and call os._exit().
-
-	This disables the capturemanager and dumps stdout and stderr.
-	Then the stacks are dumped and os._exit(1) is called.
-	"""
-	if not settings.disable_debugger_detection and is_debugging():
-		return
-	terminal = item.config.get_terminal_writer()
-	try:
-		capman = item.config.pluginmanager.getplugin("capturemanager")
-		if capman:
-			capman.suspend_global_capture(item)
-			stdout, stderr = capman.read_global_capture()
-		else:
-			stdout, stderr = None, None
-		terminal.sep("+", title="Timeout")
-		caplog = item.config.pluginmanager.getplugin("_capturelog")
-		if caplog and hasattr(item, "capturelog_handler"):
-			log = item.capturelog_handler.stream.getvalue()
-			if log:
-				terminal.sep("~", title="Captured log")
-				terminal.write(log)
-		if stdout:
-			terminal.sep("~", title="Captured stdout")
-			terminal.write(stdout)
-		if stderr:
-			terminal.sep("~", title="Captured stderr")
-			terminal.write(stderr)
-		dump_stacks(terminal)
-		terminal.sep("+", title="Timeout")
-	except Exception:
-		traceback.print_exc()
-	finally:
-		terminal.flush()
-		sys.stdout.flush()
-		sys.stderr.flush()
-		os._exit(1)
-
-
-def dump_stacks(terminal):
-	"""Dump the stacks of all threads except the current thread."""
-	current_ident = threading.current_thread().ident
-	for thread_ident, frame in sys._current_frames().items():
-		if thread_ident == current_ident:
-			continue
-		for t in threading.enumerate():
-			if t.ident == thread_ident:
-				thread_name = t.name
-				break
-		else:
-			thread_name = "<unknown>"
-		terminal.sep("~", title="Stack of %s (%s)" % (thread_name, thread_ident))
-		terminal.write("".join(traceback.format_stack(frame)))
