@@ -24,7 +24,7 @@ classifiers = [
 	"Environment :: Console",
 	"Environment :: Plugins",
 	"Intended Audience :: Developers",
-	"Operating System :: Linux",
+	"Operating System :: POSIX",
 	"Programming Language :: Python",
 	"Programming Language :: Python :: 3.11",
 	"Programming Language :: Python :: 3.12",
