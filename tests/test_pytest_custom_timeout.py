@@ -6,6 +6,8 @@ import time
 import pexpect
 import pytest
 
+from pytest_custom_timeout import plugin
+
 pytest_plugins = "pytester"
 
 have_sigalrm = pytest.mark.skipif(not hasattr(signal, "SIGALRM"), reason="OS does not have SIGALRM")
@@ -46,12 +48,12 @@ def test_thread(pytester):
     """)
 	result = pytester.runpytest_subprocess("--timeout=1", "--timeout-method=thread")
 	result.stdout.fnmatch_lines([
-	    "*++ Timeout ++*",
+	    "*TIMED OUT*",
 	    "*~~ Stack of MainThread* ~~*",
 	    "*File *, line *, in *",
-	    "*++ Timeout ++*",
+	    "*TIMED OUT*",
 	])
-	assert "++ Timeout ++" in result.stdout.lines[-1]
+	assert "TIMED OUT" in result.stdout.lines[-1]
 
 
 @pytest.mark.skipif(hasattr(sys, "pypy_version_info"), reason="pypy coverage seems broken currently")
@@ -66,12 +68,12 @@ def test_cov(pytester):
     """)
 	result = pytester.runpytest_subprocess("--timeout=1", "--cov=test_cov", "--timeout-method=thread")
 	result.stdout.fnmatch_lines([
-	    "*++ Timeout ++*",
+	    "*TIMED OUT*",
 	    "*~~ Stack of MainThread* ~~*",
 	    "*File *, line *, in *",
-	    "*++ Timeout ++*",
+	    "*TIMED OUT*",
 	])
-	assert "++ Timeout ++" in result.stdout.lines[-1]
+	assert "TIMED OUT" in result.stdout.lines[-1]
 
 
 def test_timeout_env(pytester, monkeypatch):
@@ -121,7 +123,7 @@ def test_fix_setup(meth, scope, pytester):
     """.format(scope=scope))
 	result = pytester.runpytest_subprocess("--timeout=1", f"--timeout-method={meth}")
 	assert result.ret > 0
-	assert "Timeout" in result.stdout.str() + result.stderr.str()
+	assert "TIMED OUT" in result.stdout.str() + result.stderr.str()
 
 
 def test_fix_setup_func_only(pytester):
@@ -140,7 +142,7 @@ def test_fix_setup_func_only(pytester):
     """)
 	result = pytester.runpytest_subprocess("--timeout=1")
 	assert result.ret == 0
-	assert "Timeout" not in result.stdout.str() + result.stderr.str()
+	assert "TIMED OUT" not in result.stdout.str() + result.stderr.str()
 
 
 @pytest.mark.parametrize("meth", [pytest.param("signal", marks=have_sigalrm), "thread"])
@@ -164,7 +166,7 @@ def test_fix_finalizer(meth, scope, pytester):
     """)
 	result = pytester.runpytest_subprocess("--timeout=1", "-s", f"--timeout-method={meth}")
 	assert result.ret > 0
-	assert "Timeout" in result.stdout.str() + result.stderr.str()
+	assert "TIMED OUT" in result.stdout.str() + result.stderr.str()
 
 
 def test_fix_finalizer_func_only(pytester):
@@ -187,7 +189,7 @@ def test_fix_finalizer_func_only(pytester):
     """)
 	result = pytester.runpytest_subprocess("--timeout=1", "-s")
 	assert result.ret == 0
-	assert "Timeout" not in result.stdout.str() + result.stderr.str()
+	assert "TIMED OUT" not in result.stdout.str() + result.stderr.str()
 
 
 @have_sigalrm
@@ -201,7 +203,7 @@ def test_timeout_mark_sigalrm(pytester):
             assert False
     """)
 	result = pytester.runpytest_subprocess()
-	result.stdout.fnmatch_lines(["*Failed: Timeout >1.0s*"])
+	result.stdout.fnmatch_lines(["*Failed: TIMED OUT*"])
 
 
 def test_timeout_mark_timer(pytester):
@@ -213,7 +215,7 @@ def test_timeout_mark_timer(pytester):
             time.sleep(2)
     """)
 	result = pytester.runpytest_subprocess("--timeout-method=thread")
-	result.stdout.fnmatch_lines(["*++ Timeout ++*"])
+	result.stdout.fnmatch_lines(["*TIMED OUT*"])
 
 
 def test_timeout_mark_non_int(pytester):
@@ -225,7 +227,7 @@ def test_timeout_mark_non_int(pytester):
          time.sleep(1)
     """)
 	result = pytester.runpytest_subprocess("--timeout-method=thread")
-	result.stdout.fnmatch_lines(["*++ Timeout ++*"])
+	result.stdout.fnmatch_lines(["*TIMED OUT*"])
 
 
 def test_timeout_mark_non_number(pytester):
@@ -261,7 +263,7 @@ def test_timeout_mark_method_nokw(pytester):
             time.sleep(2)
     """)
 	result = pytester.runpytest_subprocess()
-	result.stdout.fnmatch_lines(["*+ Timeout +*"])
+	result.stdout.fnmatch_lines(["*TIMED OUT*"])
 
 
 def test_timeout_mark_noargs(pytester):
@@ -362,7 +364,7 @@ def test_timeout_marker_inheritance(pytester):
     """)
 	result = pytester.runpytest_subprocess("--timeout=1", "-s")
 	assert result.ret == 0
-	assert "Timeout" not in result.stdout.str() + result.stderr.str()
+	assert "TIMED OUT" not in result.stdout.str() + result.stderr.str()
 
 
 def test_marker_help(pytester):
@@ -445,9 +447,9 @@ def test_disable_debugger_detection_flag(pytester, debugging_module, debugging_s
 
 
 def test_is_debugging(monkeypatch):
-	import pytest_timeout
+	from pytest_custom_timeout import plugin
 
-	assert not pytest_timeout.is_debugging()
+	assert not plugin.is_debugging()
 
 	# create a fake module named "custom.pydevd" with a trace function on it
 	from types import ModuleType
@@ -462,23 +464,23 @@ def test_is_debugging(monkeypatch):
 	custom_trace.__module__ = module_name
 	module.custom_trace = custom_trace
 
-	assert pytest_timeout.is_debugging(custom_trace)
+	assert plugin.is_debugging(custom_trace)
 
 
 def test_not_main_thread(pytester):
-	pytest.skip("The 'pytest_timeout.timeout_setup' function no longer exists")
+	pytest.skip("The 'pytest_custom_timeout.plugin.timeout_setup' function no longer exists")
 	pytester.makepyfile("""
         import threading
-        import pytest_timeout
+        from pytest_custom_timeout import plugin
 
-        current_timeout_setup = pytest_timeout.timeout_setup
+        current_timeout_setup = plugin.timeout_setup
 
         def new_timeout_setup(item):
             threading.Thread(
                 target=current_timeout_setup, args=(item),
             ).join()
 
-        pytest_timeout.timeout_setup = new_timeout_setup
+        plugin.timeout_setup = new_timeout_setup
 
         def test_x(): pass
     """)
